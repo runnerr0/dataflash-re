@@ -88,10 +88,12 @@ It mirrors the bridge's `sendRefresh()` exactly, round-trip self-tests, and deco
 - [x] Assets identified; EPROM extracted & disassembled (8051, Rev 2.82)
 - [x] Prior art found (US Patent 5,078,039); schematic read (CPU, 12 MHz, DS8921, pinout)
 - [x] **Protocol spec drafted** ([`protocol/`](protocol/))
-- [x] **Bridge firmware** builds for 3 boards; RMT 9-bit/375k TX, Art-Net/sACN/OSC, WiFi STA+AP, web UI
+- [x] **Bridge firmware** (4 build targets); RMT 9-bit/375k TX, Art-Net/sACN/OSC, WiFi STA+AP, web UI
 - [x] **TX chain wire-verified** on ESP32-S3-ETH via MAX485 → USB-RS485 loopback (137/137 refreshes byte-exact)
 - [x] **Nibble packing verified** with an asymmetric payload (even→high, odd→low)
-- [ ] **Capture a real original controller** — confirm ordering, heartbeat cadence, `0xFF`/`0x12` usage, and nibble mapping **vs OEM** (resolves the spec's remaining `[?]` items)
+- [x] **Real OEM controller captured** — read via FTDI USB-RS485; **baud 375000 confirmed**, labeled program library captured. Firmware re-read confirms `0x7F`=START (loads DIP addressing) but it's **absent on the 8-bit wire** — the control plane needs the 9th bit.
+- [x] **9-bit RX sniffer firmware** (`esp32-s3-sniff`) — listen-only analyzer that recovers the control/data 9th bit a USB-serial adapter can't.
+- [ ] **Decode the 9th-bit control plane** (sniffer / logic analyzer): START location, FIRE-vs-data `0xF7`, per-program data encoding
 - [ ] **Drive a real fixture** end-to-end (confirm strobe + addressing; flip `nibbleSwap` if needed)
 
 ## Assets & provenance

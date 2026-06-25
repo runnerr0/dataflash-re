@@ -19,7 +19,10 @@ Reverse-engineering the **original Lightwave Research / High End Systems "Datafl
 - ✅ **Bench validation procedure** — `bridge/BENCH-VALIDATION.md` (scope/LA steps, golden targets, [?]-flip checklist)
 - ✅ **TX chain wire-verified on ESP32-S3-ETH** (GPIO17 data / GPIO16 DE, MAX485ESA): loopback capture via USB-RS485 (8-data+parity framing — see `tools/dataflash_frame.py --capture`) decoded **137/137 refreshes exactly** as `55 7F 88×8 F7`; scope bit-period ≈2.66µs. Confirms RMT 9-bit/375k framing, packet ordering, nibble packing. (Validates bridge *emits the spec*, not spec-vs-OEM.)
 - ✅ **Bridge nibble-packing verified** via asymmetric capture (2026-06-25): fixture 0→`F0` (even=high nibble), fixture 1→`0F` (odd=low nibble) — matches `addr÷2`=byte index, `addr&1`=nibble. Bridge emits per spec; `nibbleSwap` flips it if real fixtures disagree.
-- ⬜ Live-capture a **real original controller** (spec vs OEM); confirm nibble mapping on a real fixture
+- ✅ **Real OEM controller captured** (2026-06-26): read the original controller via FTDI USB-RS485 + `tools/dataflash_frame.py --capture`. **Baud 375000 confirmed**; captured a labeled **program library** (`captures/prog-01..10.bin`, gitignored). Gotchas: FTDI wedges on controller power-off (USB replug); the controller's XLR uses a **nonstandard pinout** (GND not on the DMX pin).
+- ✅ **Firmware re-read reconciles 0x7F** (`firmware-analysis/02`): `0x7F`=START is a real equality test (handler `0x0A87` reads DIP→position counter `0x34`=addr÷2; ARM `0x0A9E` only sets flags) — gated by the 9th bit. But `0x7F` is **absent on the 8-bit wire** under N/E/O parity → the control plane is only visible WITH the 9th bit.
+- ✅ **9-bit RX sniffer firmware** (`bridge/src/dataflash_rx.*`, env `esp32-s3-sniff`) — recovers the control/data 9th bit no USB-serial adapter can; listen-only protocol analyzer, prints each byte tagged C(control)/d(data).
+- ⬜ Run the sniffer (or incoming logic analyzer) to decode the 9th-bit control plane: START location, FIRE-vs-data `0xF7`, full per-program data encoding
 - ⬜ Hardware-verified end to end on a real fixture
 
 ## Protocol cheat-sheet (authoritative: protocol/dataflash-protocol-spec.md)
@@ -42,6 +45,7 @@ osc.*         TouchOSC OSC in (8000) / feedback out (9000)          [controller 
 patterns.*    stage-sequencer strobe engine (free-runs); modifiers: factor/random/advance/modulate
 main.cpp      scheduler: PAT_LIVE=network passthrough; else patterns_render; refresh + heartbeats
 dataflash_tx.* RMT 9-bit/375k framing: ARM,START,<2 fixtures/byte>,STOP + heartbeats
+dataflash_rx.* 9-bit RX SNIFFER (bit-bang on core 1): recovers value + 9th bit [DF_SNIFF_MODE build only]
 net.*  ETH+WiFi-AP fallback   webui.*  async status/config/test   config.h  NVS+pins   ui.h  OLED+encoder stub
 ```
 OSC schema + TouchOSC layout: `bridge/CONTROL-TOUCHOSC.md`. Pattern catalog: `bridge/PATTERNS.md`.
@@ -58,6 +62,7 @@ Three PlatformIO envs (pick one with `-e`, else `pio run` builds all):
 - `esp32-poe-iso` — Olimex ESP32-PoE-ISO (LAN8720 RMII, PoE) — production target role.
 - `esp32-s3-eth` — WaveShare ESP32-S3-ETH (W5500 SPI ETH, native USB-C) — bench/TX board. Wired ETH needs W5500 SPI init (not yet in net.cpp); WiFi-AP only for now.
 - `esp32-c3` — generic C3 devkit (WiFi only) — alt bench board.
+- `esp32-s3-sniff` — S3 **9-bit RX sniffer** (listen-only analyzer; `-DDF_SNIFF_MODE`). Wire MAX485 to receive: RE=DE=GND, RO→GPIO16, A/B on the link. Prints `<hex>C` (control 9th=1) / `<hex>d` (data 9th=0).
 ```bash
 cd bridge && pio run -e esp32-s3-eth -t upload && pio device monitor -e esp32-s3-eth
 ```

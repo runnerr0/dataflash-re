@@ -51,6 +51,7 @@ config UI at http://192.168.4.1. With PoE/Ethernet, the serial log prints the IP
 inputs.cpp   Art-Net(6454) + sACN/E1.31(5568) -> g_dmx (HTP merge, source timeout)
 main.cpp     scheduler: build 4-bit intensities (live or test) -> refresh + heartbeats
 dataflash_tx RMT 9-bit/375k framing: ARM,START,<2 fixtures/byte>,STOP + heartbeats
+dataflash_rx 9-bit RX SNIFFER (bit-bang on core 1; `esp32-s3-sniff`/`DF_SNIFF_MODE`): recover value + 9th bit
 net.cpp      ETH + WiFi-AP fallback        webui.cpp  async server + embedded page
 config.h     NVS-persisted settings        ui.h       OLED+encoder (stub)
 ```
