@@ -40,6 +40,28 @@ static void buildIntensities() {
   }
 }
 
+#ifdef DF_SNIFF_MODE
+// ---- 9-bit RX sniffer build: listen-only, decode + print (value, 9th bit) ----
+#include "dataflash_rx.h"
+void setup() {
+  Serial.begin(115200); delay(200);
+  Serial.println("\n[dataflash-sniff] 9-bit RX sniffer @ 375000");
+  Serial.printf("[dataflash-sniff] wire: MAX485 RO->GPIO%d, RE->GND, DE->GND, A/B on controller pair\n", DF_RX_PIN);
+  Serial.println("[dataflash-sniff] output: <hex><C|d>  (C=control 9th=1, d=data 9th=0); '[burst]' = >0.4ms gap\n");
+  df_rx_begin(DF_RX_PIN);
+}
+void loop() {
+  static uint32_t lastUs = 0; static int col = 0;
+  DfWord w;
+  while (df_rx_pop(&w)) {
+    uint32_t now = micros();
+    if (now - lastUs > 400) { Serial.print("\n[burst] "); col = 0; }   // >0.4ms gap = new packet
+    lastUs = now;
+    Serial.printf("%02X%c ", w.value, w.ninth ? 'C' : 'd');
+    if (++col % 16 == 0) Serial.print("\n        ");
+  }
+}
+#else
 void setup() {
   Serial.begin(115200); delay(50);
   Serial.println("\n[dataflash-bridge] boot");
@@ -78,3 +100,4 @@ void loop() {
     g_tx.sendHeartbeat();   // feed fixtures' cooldown/timebase between refreshes
   }
 }
+#endif // DF_SNIFF_MODE

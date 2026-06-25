@@ -12,6 +12,9 @@
 #ifndef DF_DE_PIN
 #define DF_DE_PIN   5    // -> MAX485 DE (+RE). Transmit-only: can also tie high in HW.
 #endif
+#ifndef DF_RX_PIN
+#define DF_RX_PIN   16   // sniff mode only: MAX485 RO input (set RE=DE=GND to listen-only)
+#endif
 #ifndef OLED_SDA_PIN
 #define OLED_SDA_PIN 13
 #endif
