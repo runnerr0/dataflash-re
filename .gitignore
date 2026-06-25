@@ -1,0 +1,26 @@
+# PlatformIO build output
+bridge/.pio/
+
+# Extracted firmware working dir (regenerate from the OEM df282.exe — see assets/MANIFEST.md)
+firmware-analysis/df282_extract/
+
+# --- Third-party / copyrighted OEM material — NOT redistributed ---
+# (Lightwave Research / High End Systems / ETC. See README "Assets & provenance".)
+assets/firmware/
+assets/manuals/
+assets/schematics/
+_duplicates/
+
+# Raw capture dumps (can be large/binary); keep captures/README.md + small decoded logs
+captures/*.bin
+captures/*.raw
+captures/*.sr
+captures/*.vcd
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+**/.DS_Store

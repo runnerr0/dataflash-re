@@ -1,0 +1,12 @@
+# Normalize line endings to LF in the repo
+* text=auto eol=lf
+
+# Keep these as exact bytes
+*.hex  binary
+*.bin  binary
+*.exe  binary
+*.pdf  binary
+*.png  binary
+*.jpg  binary
+*.sr   binary
+*.vcd  binary
