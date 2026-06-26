@@ -105,7 +105,8 @@ python3 tools/pattern_catalog.py                       # auto-name every program
 - [x] **Sniffed the full program library** with the 9-bit sniffer — all **99 programs + 3 function previews** captured, decoded, auto-named, and rendered in a web preview ([`tools/pattern_catalog.py`](tools/pattern_catalog.py)).
 - [x] **Fixture model confirmed: 8 heads, one byte each** (this controller) — verified empirically; resolves the 8-vs-256 / nibble-packing question.
 - [x] **Data plane decoded** — `55 40` + 8 fixture bytes on a heartbeat timebase; no ARM/START/FIRE on the wire; addressing is frame-relative.
-- [ ] **Finish the control plane**: confirm `0xC0`/`0x80` roles and the per-fixture byte's intensity-vs-flash-mode split (best done with a logic analyzer + a real fixture)
+- [x] **Control plane finished** — operating control plane is the `0x00` heartbeat (timebase) **alone**; `0xC0`/`0x80` proven to be sniffer decode artifacts (misread heartbeats from a late start-edge), and no ARM/START/FIRE/CLEAR ever appears on the wire. Sniffer sampling phase fixed.
+- [ ] **Per-fixture byte semantics** — the intensity-vs-flash-mode nibble split (needs a real fixture to ground-truth)
 - [ ] **Drive a real fixture** end-to-end (confirm strobe + addressing; flip `nibbleSwap` if needed)
 
 ## Assets & provenance

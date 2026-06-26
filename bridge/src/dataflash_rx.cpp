@@ -35,9 +35,15 @@ static void rxTask(void*) {
     noInterrupts();                     // shield this one frame (~29 us) on this core only
     uint16_t frame = 0;
     for (int b = 0; b < 10; b++) {      // d0..d7 (LSB first), then 9th, then stop
-      // bit center = (b + 1.5)*CPB; sample the 9th bit (b==8) +0.25 bit later so a
-      // slightly slow d7 edge can't bleed into it (fixes the lone flaky case, 0x80).
-      float frac = (b == 8) ? 1.75f : 1.5f;
+      // Sampling phase. t0 (the start-edge poll) is only ever LATE, never early — an
+      // interrupt between frames can delay catching the falling edge. A late t0 shifts
+      // every sample toward the byte's tail, so the top data bits of a HEARTBEAT
+      // (00000000 + 9th/stop HIGH) can catch the rising edge and read 1 -> spurious
+      // 0x80 (d7) / 0xC0 (d6+d7) "control" bytes. Sampling each data bit at 0.30 into
+      // its window (not 0.50) buys ~0.70 bit of slack against late t0 while staying
+      // clear of the prior bit's edge. The 9th bit is sampled at the center of its own
+      // window (a data byte's 9th=0 must not bleed into the HIGH stop bit either).
+      float frac = (b == 8) ? 1.5f : 1.3f;
       uint32_t target = t0 + (uint32_t)(((float)b + frac) * (float)CPB);
       while ((int32_t)(ESP.getCycleCount() - target) < 0) {}
       if (rd()) frame |= (1u << b);

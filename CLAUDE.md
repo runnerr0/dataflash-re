@@ -25,7 +25,8 @@ Reverse-engineering the **original Lightwave Research / High End Systems "Datafl
 - ✅ **Sniffed the full program library** (2026-06-25) with the 9-bit sniffer + `tools/sniff_sampler.py`: all **99 programs + 3 function previews** captured. Decoded the **data plane** completely — every program is `55 40` + 8 fixture bytes on a heartbeat timebase (`0xC0` refresh marker); **no ARM/START/FIRE on the wire** → addressing is frame-relative.
 - ✅ **Fixture model confirmed: 8 heads, 1 byte each** (this controller) — verified empirically by decoding chase/wash programs (chase walks byte-by-byte across exactly 8 positions; wash drives full-range 0–255 values that can't be nibbles). The firmware's 2-per-byte is the separate 256-head SKU. See `firmware-analysis/04` + the protocol spec's "Live OEM controller capture".
 - ✅ **Program catalog + web visualizer** (`tools/pattern_catalog.py` → `captures/sniff/preview.html`): auto-classifies motion, collapses heartbeat re-sends to true states, legend + per-fixture readout + rename/export. Per-fixture byte is intensity+flash-mode coded (`00`=off), exact mapping TBD.
-- ⬜ Finish the control plane: confirm `0xC0`/`0x80` roles + the per-fixture byte's intensity-vs-flash-mode split (best with a logic analyzer)
+- ✅ **Control plane finished** (2026-06-26): the operating control plane is the `0x00` heartbeat (master timebase) **alone**. `0xC0`/`0x80` were proven to be **sniffer decode artifacts** — misread heartbeats from a late start-edge `t0` (98.4% embedded in heartbeat runs, uniform position, exact bit mechanism); no ARM/START/FIRE/CLEAR/SPECIAL ever on the wire. Sniffer sampling phase fixed in `bridge/src/dataflash_rx.cpp` (data bits at 0.30/window). See `firmware-analysis/04`.
+- ⬜ Per-fixture byte's intensity-vs-flash-mode nibble split (needs a real fixture)
 - ⬜ Hardware-verified end to end on a real fixture
 
 ## Protocol cheat-sheet (authoritative: protocol/dataflash-protocol-spec.md)
