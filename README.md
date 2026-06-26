@@ -39,9 +39,9 @@ Triangulated from three independent, agreeing sources. Every claim in [`protocol
 
 - **Physical:** RS-422/485 differential (DS8921), 3-pin — **Pin 1 = GND, Pin 2 = Data−, Pin 3 = Data+** (DMX convention). Each fixture is an active repeater with a power-off relay bypass.
 - **Serial:** **375000 baud, 9 data bits** (8051 UART Mode 2, SMOD=1, 12 MHz). No DMX break.
-- **9th bit = control/data flag** (1 = control, 0 = data). Markers: `0x55`=ARM, `0x7F`=START, `0x00`=HEARTBEAT (~120 Hz), `0xF7`=STOP/FIRE, `0xFF`=CLEAR.
-- **Data byte = two fixtures × 4-bit intensity** (16 levels). Positional addressing via 8 DIP switches: byte index = addr ÷ 2, nibble = addr & 1 (even → high nibble, odd → low).
-- **Packet:** `ARM, START, data×N, STOP` interleaved with heartbeats.
+- **9th bit = control/data flag** (1 = control, 0 = data). Firmware marker set: `0x55`=ARM, `0x7F`=START, `0x00`=HEARTBEAT (~120 Hz), `0xF7`=STOP/FIRE, `0xFF`=CLEAR.
+- **Fixtures per byte — two product variants:** the **8-head controller we captured** sends **one byte per fixture** (8-bit), `55 40` + 8 bytes = 8 fixtures ("EIGHT FIXTURES LINEAR" on the chassis, confirmed empirically). The **256-head firmware variant** packs **two fixtures × 4-bit** per byte (byte = addr ÷ 2, nibble = addr & 1). Same `55 40` framing family.
+- **What the controller actually broadcasts (live capture):** `55 40` + 8 fixture bytes, repeated on a heartbeat timebase with a `0xC0` refresh marker — and **no ARM/START/FIRE** at all (those never appear on the wire across all 102 programs). Fixtures sync frame-relative to the `55 40` header. The per-fixture byte is intensity + flash-mode coded, not a linear ramp.
 
 Full detail and the bridge implementation note (9-bit TX is done with the ESP32 **RMT** peripheral, since classic UART can't hold a constant 9th bit) are in the spec and [`bridge/README.md`](bridge/README.md).
 
@@ -55,7 +55,7 @@ dataflash-re/
 │   ├── src/             inputs/osc/patterns/dataflash_tx/net/webui
 │   ├── platformio.ini   envs: esp32-poe-iso · esp32-s3-eth · esp32-c3
 │   ├── PATTERNS.md  CONTROL-TOUCHOSC.md  BENCH-VALIDATION.md
-├── tools/               dataflash_frame.py — golden framing reference + USB-RS485 capture/decode
+├── tools/               dataflash_frame.py (golden framing); sniff_sampler.py + pattern_catalog.py (program-library capture, auto-naming, web preview)
 ├── captures/            logic-analyzer / serial captures + capture guide (raw dumps gitignored)
 └── assets/              MANIFEST.md (provenance). OEM firmware/manuals/schematics NOT included — see below.
 ```
@@ -83,6 +83,15 @@ python3 tools/dataflash_frame.py --capture <port>      # decode a live USB-RS485
 
 It mirrors the bridge's `sendRefresh()` exactly, round-trip self-tests, and decodes a capture against the golden vectors. The capture path uses the **8-data + parity** trick to read this 9-bit protocol on an ordinary USB-serial adapter (the 9th bit lands in the parity slot, keeping the frame aligned). See [`captures/README.md`](captures/README.md).
 
+**Program-library tools** (used with the `esp32-s3-sniff` 9-bit sniffer):
+
+```bash
+python3 tools/sniff_sampler.py                         # hit a program on the controller, Enter to record each
+python3 tools/pattern_catalog.py                       # auto-name every program + build captures/sniff/preview.html
+```
+
+`sniff_sampler.py` records the controller's output per program over the sniffer's USB-CDC; `pattern_catalog.py` extracts each program's distinct strobe states, auto-classifies the motion (chase / bounce / ramp / sparkle / wash / …), and emits a self-contained **web visualizer** (`preview.html`) with a legend, per-fixture readout, and rename/export — open it to watch and name all 99 programs + 3 function previews. (Captures are local/gitignored.)
+
 ## Status
 
 - [x] Assets identified; EPROM extracted & disassembled (8051, Rev 2.82)
@@ -93,7 +102,10 @@ It mirrors the bridge's `sendRefresh()` exactly, round-trip self-tests, and deco
 - [x] **Nibble packing verified** with an asymmetric payload (even→high, odd→low)
 - [x] **Real OEM controller captured** — read via FTDI USB-RS485; **baud 375000 confirmed**, labeled program library captured. Firmware re-read confirms `0x7F`=START (loads DIP addressing) but it's **absent on the 8-bit wire** — the control plane needs the 9th bit.
 - [x] **9-bit RX sniffer firmware** (`esp32-s3-sniff`) — listen-only analyzer that recovers the control/data 9th bit a USB-serial adapter can't.
-- [ ] **Decode the 9th-bit control plane** (sniffer / logic analyzer): START location, FIRE-vs-data `0xF7`, per-program data encoding
+- [x] **Sniffed the full program library** with the 9-bit sniffer — all **99 programs + 3 function previews** captured, decoded, auto-named, and rendered in a web preview ([`tools/pattern_catalog.py`](tools/pattern_catalog.py)).
+- [x] **Fixture model confirmed: 8 heads, one byte each** (this controller) — verified empirically; resolves the 8-vs-256 / nibble-packing question.
+- [x] **Data plane decoded** — `55 40` + 8 fixture bytes on a heartbeat timebase; no ARM/START/FIRE on the wire; addressing is frame-relative.
+- [ ] **Finish the control plane**: confirm `0xC0`/`0x80` roles and the per-fixture byte's intensity-vs-flash-mode split (best done with a logic analyzer + a real fixture)
 - [ ] **Drive a real fixture** end-to-end (confirm strobe + addressing; flip `nibbleSwap` if needed)
 
 ## Assets & provenance
