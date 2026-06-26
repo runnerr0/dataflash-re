@@ -16,6 +16,7 @@ captures/*.bin
 captures/*.raw
 captures/*.sr
 captures/*.vcd
+captures/sniff/          # sniff_sampler.py per-program captures (local data)
 
 # Python
 __pycache__/
