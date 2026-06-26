@@ -43,22 +43,42 @@ static void buildIntensities() {
 #ifdef DF_SNIFF_MODE
 // ---- 9-bit RX sniffer build: listen-only, decode + print (value, 9th bit) ----
 #include "dataflash_rx.h"
+#include "soc/gpio_struct.h"
 void setup() {
   Serial.begin(115200); delay(200);
   Serial.println("\n[dataflash-sniff] 9-bit RX sniffer @ 375000");
   Serial.printf("[dataflash-sniff] wire: MAX485 RO->GPIO%d, RE->GND, DE->GND, A/B on controller pair\n", DF_RX_PIN);
   Serial.println("[dataflash-sniff] output: <hex><C|d>  (C=control 9th=1, d=data 9th=0); '[burst]' = >0.4ms gap\n");
+  // Diagnostic FIRST (single-threaded, can't be starved): is GPIO16 even toggling?
+  pinMode(DF_RX_PIN, INPUT);
+  Serial.println("[diag] sampling GPIO16 activity for 1s before starting the decoder...");
+  for (int i = 0; i < 5; i++) {
+    int last = (GPIO.in >> DF_RX_PIN) & 1, lvl = last, edges = 0;
+    uint32_t t = micros();
+    while (micros() - t < 200000) { int v = (GPIO.in >> DF_RX_PIN) & 1; if (v != last) { edges++; last = v; } }
+    Serial.printf("[diag] gpio%d level=%d edges/200ms=%d\n", DF_RX_PIN, lvl, edges);
+  }
+  Serial.println("[diag] starting decoder...");
   df_rx_begin(DF_RX_PIN);
 }
 void loop() {
-  static uint32_t lastUs = 0; static int col = 0;
+  static uint32_t lastUs = 0, lastStat = 0, nwords = 0, nbursts = 0; static int col = 0;
   DfWord w;
   while (df_rx_pop(&w)) {
     uint32_t now = micros();
-    if (now - lastUs > 400) { Serial.print("\n[burst] "); col = 0; }   // >0.4ms gap = new packet
-    lastUs = now;
+    if (now - lastUs > 400) { Serial.print("\n[burst] "); col = 0; nbursts++; }   // >0.4ms gap = new packet
+    lastUs = now; nwords++;
     Serial.printf("%02X%c ", w.value, w.ninth ? 'C' : 'd');
     if (++col % 16 == 0) Serial.print("\n        ");
+  }
+  // 1 Hz diagnostic: is GPIO16 even toggling? (edges=0 -> no signal at the pin)
+  if (millis() - lastStat > 1000) {
+    lastStat = millis();
+    int last = (GPIO.in >> DF_RX_PIN) & 1, lvl = last, edges = 0;
+    uint32_t t = micros();
+    while (micros() - t < 5000) { int v = (GPIO.in >> DF_RX_PIN) & 1; if (v != last) { edges++; last = v; } }
+    Serial.printf("\n[stat] gpio%d level=%d edges/5ms=%d  words=%lu bursts=%lu\n",
+                  DF_RX_PIN, lvl, edges, (unsigned long)nwords, (unsigned long)nbursts);
   }
 }
 #else
