@@ -75,6 +75,16 @@ def classify(frames):
     return "complex", meta
 
 
+def order_key(label):
+    """Sort programs numerically 1..99, then function previews (f1,f2,f3) last."""
+    if label.isdigit():
+        return (0, int(label), 0)
+    m = re.match(r'^([A-Za-z]+)(\d+)$', label)
+    if m:
+        return (1, m.group(1), int(m.group(2)))
+    return (2, label, 0)
+
+
 def filmstrip(frames, rows=8):
     if not frames:
         return []
@@ -132,14 +142,28 @@ def main():
     if not files:
         sys.exit(f"no {a.indir}/prog-*.txt found — run tools/sniff_sampler.py first")
 
-    catalog = []
+    # Dedupe collisions like prog-1 vs prog-01 (stray earlier captures vs the full
+    # zero-padded sweep): canonical id = int for digit labels. Keep the better capture
+    # — prefer the zero-padded label (the intended 01..99 sweep), then more frames.
+    best = {}
     for f in files:
         label = os.path.basename(f)[5:-4]
         frames = load_frames(f, a.fixtures)
         kind, meta = classify(frames)
-        catalog.append({"program": label, "name": kind, "kind": kind,
-                        "frames": meta.get("frames", 0), "avg_active": meta.get("avg_active"),
-                        "filmstrip": filmstrip(frames), "frames_data": frames[:a.maxframes]})
+        canon = ('n', int(label)) if label.isdigit() else ('f', label)
+        entry = {"program": label, "name": kind, "kind": kind, "_file": f,
+                 "frames": meta.get("frames", 0), "avg_active": meta.get("avg_active"),
+                 "filmstrip": filmstrip(frames), "frames_data": frames[:a.maxframes]}
+        prev = best.get(canon)
+        if prev is None or (len(label), entry["frames"]) > (len(prev["program"]), prev["frames"]):
+            if prev:
+                print(f"  dedupe: prog-{canon[1]} -> keeping '{label}' ({entry['frames']} states), "
+                      f"dropping '{prev['program']}' ({prev['frames']} states)")
+            best[canon] = entry
+
+    catalog = sorted(best.values(), key=lambda c: order_key(c["program"]))
+    for c in catalog:
+        c.pop("_file", None)
 
     json.dump(catalog, open(os.path.join(a.indir, "_catalog.json"), "w"), indent=1)
     md = os.path.join(a.indir, "_catalog.md")
