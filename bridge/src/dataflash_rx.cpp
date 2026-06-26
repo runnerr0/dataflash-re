@@ -41,8 +41,8 @@ static void rxTask(void*) {
     }
     interrupts();
     DfWord w = { (uint8_t)(frame & 0xFF), (bool)((frame >> 8) & 1u), (bool)((frame >> 9) & 1u) };
-    xQueueSend(s_q, &w, 0);             // non-blocking; a dropped word is fine for a sniffer
-    if (++fcount >= 128) { fcount = 0; vTaskDelay(1); }  // periodically yield so loop() drains + prints
+    xQueueSend(s_q, &w, 0);             // loop() on core 1 drains continuously -> lossless
+    if (++fcount >= 2000) { fcount = 0; vTaskDelay(1); }  // rare yield only to feed core-0 idle/WDT
   }
 }
 
@@ -50,9 +50,10 @@ void df_rx_begin(int rxPin) {
   s_pin = rxPin;
   pinMode(rxPin, INPUT);
   s_q = xQueueCreate(512, sizeof(DfWord));
-  // High priority for responsiveness, but the task yields on an idle line (above),
-  // so loop() and the idle/watchdog tasks on this core still run. (No WDT disable.)
-  xTaskCreatePinnedToCore(rxTask, "df_rx", 4096, nullptr, configMAX_PRIORITIES - 2, nullptr, 1);
+  // Pin to CORE 0 so the Arduino loop() (core 1) drains + prints fully in parallel
+  // = lossless. The task still yields on an idle line and every ~2000 frames, so
+  // core-0 idle/watchdog/system tasks keep running (no WDT disable needed).
+  xTaskCreatePinnedToCore(rxTask, "df_rx", 4096, nullptr, configMAX_PRIORITIES - 2, nullptr, 0);
 }
 
 bool df_rx_pop(DfWord* out) {
