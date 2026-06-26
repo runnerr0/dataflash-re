@@ -24,10 +24,10 @@ Dispatcher at `0x0C06` (only reached when `JNB RB8` at `0x0C87` sees 9th=1):
 ## Addressing — and the broadcast reconciliation  [C]/[?]
 - Addressing is **positional**: each fixture's `0x34` = addr÷2 from its DIP switches, set **only by START (`0x7F`)**; `addr&1` picks the high/low nibble. `0x34` is written nowhere else ([C]: RESET sets 0 @`0x01B0`, START sets addr÷2 @`0x0A99`).
 - **BUT the OEM program broadcasts (`55 40` + 8 data bytes) contain no START** (and no ARM/FIRE) — only heartbeats + data. So this firmware's positional addressing is not (re)armed by these programs as captured. **[?] open question.**
-- Reconciliation hypotheses (need a fixture / logic analyzer / more tracing):
-  1. START is sent once at **power-on** and we missed it (the controller addresses, then streams data frames).
-  2. The fixture firmware paired with this controller **differs from Rev 2.82**.
-  3. A receive path not yet fully traced (the `0x0571`/`0x05C7` multi-loop state machine) re-syncs the counter on the heartbeat cadence or the `55 40` header. NOTE: the `55 40` header is **not** special-cased in any parser path traced so far.
+- Reconciliation hypotheses (need a fixture / its firmware to fully close):
+  1. ~~START sent once at power-on~~ — **RULED OUT.** The actual power-on edge was captured with the 9-bit sniffer (`captures/poweron-edge.txt`): at boot the controller *immediately* streams normal `55 40` wash frames + heartbeats, with **no `7F`/`55`/`F7`/`FF` control bytes**. There is no power-on addressing handshake — START is never sent, ever.
+  2. ⇒ Addressing must be **frame-relative**: each fixture syncs on the `55 40` header and counts its byte position (by DIP address) within the 8 data bytes every frame — the `55 40` header serves as the per-frame position reset, so no START control byte is needed.
+  3. The Rev 2.82 fixture firmware we have addresses via START (`0x34` from `0x7F`) and does **not** special-case `55 40` in any traced parser path ⇒ either the fixtures paired with this controller run **different firmware**, or there is a `55 40`-sync receive path not yet traced. Resolving this needs a **real fixture** (or its firmware image).
 
 ## `0xC0` / `0x80` control bytes  [?]
 Seen as control (9th=1) in every program, but **partly a 9th-bit decode artifact** (both end in a `1`; the single-bit `0x80` pulse is the marginal sniffer case). Neither is in the firmware's marker set, so as control they hit the default (clear-active) path. Real role TBD — needs the logic analyzer to confirm whether they're genuine markers or decode noise.
