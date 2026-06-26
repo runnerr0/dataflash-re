@@ -59,7 +59,17 @@ ESP32-PoE + RS-485 → fixture #1 Data In (Pin3=A/Data+, Pin2=B/Data−, Pin1=GN
 4. Map DMX/Art-Net 8-bit channel → 4-bit nibble at the byte/nibble for each fixture's DIP address.
 Cooldown/phase/thermal are handled locally by the fixtures — don't reproduce.
 
+## Live OEM controller capture (2026-06-26) — empirical [C-wire]
+Captured the original controller's output across **all 99 programs + 3 function previews** with a home-built 9-bit sniffer (ESP32 + MAX485 in RX, bit-bang RX that recovers the 9th bit; `bridge/` env `esp32-s3-sniff`, sampled via `tools/sniff_sampler.py`). This characterizes what THIS controller actually emits — which differs from the firmware-derived marker model above:
+- **Frame (universal — every program):** `0x55 0x40` (data-plane, 9th=0) + **8 data bytes** = 16 fixtures (2 per byte, 4-bit each — matches the data encoding above). `0x55` = alternating-bit preamble, `0x40` = frame-start.
+- **Control bytes (9th=1) the controller uses:** `0x00` HEARTBEAT (the timebase) and **`0xC0`** (a frame/refresh marker, in every program). `0x80` also reads as control but is partly a 9th-bit timing artifact of its single-bit pulse.
+- **NOT emitted as control:** ARM `0x55`, START `0x7F`, FIRE `0xF7` — **zero occurrences in 3.2M+ bytes across all 102 captures** (`0x55`/`0xF7` appear only as *data* values; `0x7F` never appears).
+- Programs differ only in how they animate the 8 data bytes (wash / chase / ramp / multi-level).
+- ⇒ For normal program output the controller broadcasts `55 40`-framed fixture data on a heartbeat timebase with `0xC0` control; it does **not** use the firmware's ARM/START/FIRE dispatch — likely a separate addressed/setup command path not exercised by these programs.
+
 ## Open items
-- [ ] Live-capture a real packet (ordering, heartbeat cadence, 9th-bit on the wire).
+- [x] Live-capture the OEM controller — done (above): `55 40`-framed broadcast + heartbeat/`0xC0`, not the firmware marker packet.
+- [ ] Decode `0xC0` (and `0x80`) control semantics; determine how fixtures sync/address to the `55 40` frame without a START marker.
 - [ ] Confirm `0xFF` and the `0x12`-sequence semantics empirically.
+- [ ] Verify on a real fixture; reconcile the firmware's marker dispatch vs the controller's broadcast framing.
 - [x] Transceiver / pinout / crystal — confirmed from schematic.
