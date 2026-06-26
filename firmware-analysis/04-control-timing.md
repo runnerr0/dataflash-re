@@ -19,6 +19,22 @@ Dispatcher at `0x0C06` (only reached when `JNB RB8` at `0x0C87` sees 9th=1):
 ## Fixture-count variants — IMPORTANT  [C]/[wire]
 The disassembled firmware (Rev 2.82) is the **256-fixture** variant: 128 data bytes, **2 fixtures × 4-bit intensity per byte**, nibble selected by `addr&1`. **But the controller we captured is the 8-fixture variant** ("EIGHT FIXTURES LINEAR" chassis label), and its wire format is **8 data bytes = 8 fixtures, ONE byte per fixture** (8-bit) — verified empirically (see `protocol/dataflash-protocol-spec.md` → "Live OEM controller capture": chase walks byte-by-byte across 8 heads; wash drives full-range 0–255 values that can't be nibbles). Same `55 40` framing family, different head count + per-fixture packing. The byte's two nibbles on the 8-head wire likely encode **intensity + flash-mode** per fixture (background `E6` vs highlight `E0`/`86`). Treat "2 fixtures/byte" below as the **256-head firmware's** model, not this controller's.
 
+## Per-fixture byte semantics — what the firmware implies  [C]/[?]
+Traced the data→flash path (2026-06-26). What the **256-head firmware** does, directly disassembled:
+- **Capture (`0x0C9B`):** when position counter `0x34` hits 0, the **whole 8-bit `SBUF` byte** is stored to `0x30/0x31/0x32` (no nibble split at capture).
+- **Nibble select (`0x0BAC`):** `MOV A,0x33 / ANL #0x01 / JZ` — **even fixture → low nibble** (`ANL #0x0F`), **odd fixture → high nibble** (`ANL #0xF0 / SWAP A`). So a fixture's intensity is **4-bit (16 levels)**.
+- **Intensity → flash (`0x0521`–`0x053E`):** the 4-bit value indexes a **16-entry gamma/curve table** (`MOVC A,@A+PC`), the result is driven on **P1** and used to time the **FIRE pulse on P3.4** (phase-controlled SCR energy). The **`P3.6` mode-select pin** (hardware, not data) picks between two curves.
+- **The actual 16-entry tables** (index = 4-bit intensity 0..15):
+  - `@0x0151`: `00 10 18 1C 1E 20 22 24 27 2A 2D 31 34 3A 40 46`
+  - `@0x0164`: `00 01 02 03 03 04 04 05 05 06 06 12 1D 2C 3E 5B`  (curve A)
+  - `@0x0177`: `00 01 01 02 02 03 03 04 04 05 05 11 1B 2A 38 59`  (curve B — the P3.6 alternate)
+- Triple copies `0x30/31/32` → countdown regs `R0/R1/R2`, decremented per heartbeat (`0x05A7`) — 3 sub-events, likely per AC half-cycle.
+
+**Implication for the 8-head controller's 8-bit byte:** the flash engine is fundamentally **4-bit intensity + gamma**, so a single fixture needs only 4 bits for brightness → the 8-head byte's other 4 bits are **not** intensity (matches the empirical "discrete, non-ramp values"). But two clean hypotheses were **tested against the capture and FAIL**:
+1. *Fixed nibble split* (one nibble intensity, one mode): contradicted — `0x80` and `0x08` are both common "lit" values (mirror images), and across all programs each nibble takes values from the same set `{0,6,7,8,E,F}`.
+2. *Even/odd parity placement* (the firmware's own rule, applied per byte): contradicted — every byte position 0–7 has its low **and** high nibble active about equally (~19% each), no alternation.
+⇒ The 8-head fixtures use **both nibbles per fixture** in a scheme this 256-head firmware does not describe. The firmware pins the **intensity mechanism (4-bit, gamma curves above, P3.4 FIRE timing, P3.6 mode pin)** but **cannot decode the 8-head byte's full 8 bits** — that still needs the 8-head fixture's own firmware image or a real fixture on a scope.
+
 ## Firing / timing model  [C]
 - **Data byte (9th=0):** position counter `0x34` counts down one per data byte; when it reaches 0 the byte is captured to **`0x30`, `0x31`, `0x32` (three identical copies — likely per-AC-phase / triple-buffer)**. (256-head firmware: each byte = 2 fixtures × 4-bit intensity. 8-head controller wire: each byte = 1 fixture, 8-bit.)
 - The captured intensity (`0x30/31/32`) is loaded into **R0/R1/R2 and counted down by heartbeats** (receive loops at `0x0571`, `0x05C7`: `DEC R0/R1/R2` per heartbeat until zero). So the **intensity value sets a heartbeat-counted timing**; the strobe fires **zero-cross-synchronized and heartbeat-paced**, NOT on a per-flash FIRE byte. Cooldown/thermal limiting is also heartbeat-paced.
