@@ -97,17 +97,33 @@ PREVIEW_HTML = r"""<!doctype html><html><head><meta charset=utf-8><title>Datafla
  body{font:14px system-ui,sans-serif;background:#0b0d12;color:#e6edf3;margin:0;padding:18px}
  h2{margin:0 0 12px} .lab{color:#8b949e;font-size:12px}
  select,button,input{font:14px system-ui;background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:6px}
- #stage{display:flex;gap:12px;margin:22px 0}
+ #stage{display:flex;gap:12px;margin:18px 0}
  .col{text-align:center} .head{width:60px;height:60px;border-radius:10px;background:#000;box-shadow:0 0 0 1px #30363d inset;transition:background .015s}
- .hx{font:11px ui-monospace,monospace;color:#8b949e;margin-top:4px}
+ .fxn{font:11px system-ui;color:#8b949e;margin-bottom:5px}
+ .hx{font:12px ui-monospace,monospace;color:#3d444d;margin-top:5px}
+ .hx.on{color:#ffd966;font-weight:600}
+ #info{font-size:13px;color:#c9d1d9;margin-left:6px}
+ details{background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:8px 12px;margin:6px 0 16px;max-width:760px}
+ summary{cursor:pointer;color:#58a6ff;font-weight:600} details ul{margin:8px 0 2px;padding-left:18px;line-height:1.6}
+ code{background:#161b22;border:1px solid #30363d;border-radius:4px;padding:0 4px;font:12px ui-monospace,monospace;color:#e6edf3}
+ .swatch{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:middle;margin:0 2px}
  pre{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;max-height:160px;overflow:auto}
 </style></head><body>
-<h2>Dataflash strobe preview <span class=lab>(8 fixtures, 1 byte each)</span></h2>
+<h2>Dataflash strobe preview <span class=lab>— 8 strobe heads, one byte per head</span></h2>
 <div>program <select id=sel></select>
  <button id=play>&#9208; pause</button>
  speed <input id=spd type=range min=1 max=40 value=10>
- <span id=info class=lab></span></div>
+ <span id=info></span></div>
 <div id=stage></div>
+<details open><summary>What am I looking at?</summary>
+<ul>
+ <li>The <b>8 boxes</b> are the controller's eight strobe heads, <b>Fixture&nbsp;1&nbsp;&rarr;&nbsp;8</b> left to right (the F# above each box).</li>
+ <li><span class=swatch style="background:#000;box-shadow:0 0 0 1px #30363d inset"></span> <b>dark</b> = that head is off this step &nbsp; · &nbsp; <span class=swatch style="background:#ffe9a8;box-shadow:0 0 6px #ffe9a8"></span> <b>glowing</b> = that head is firing.</li>
+ <li>The <b>hex number</b> under each head is the raw byte the controller sends that head this step. <code>00</code> = off (grey). Any nonzero value = firing (yellow). The value encodes <b>intensity + flash-mode</b> in its two nibbles — we haven't fully decoded that mapping yet (needs a real fixture), so <i>brighter&nbsp;&asymp;&nbsp;stronger, but it's not a literal 0&ndash;100% brightness</i>.</li>
+ <li><b>state&nbsp;N/M</b> in the status line = step N of M in this program's sequence (the controller re-sends each state on a heartbeat; identical re-sends are collapsed so each step is a real change). <b>pattern</b> = the auto-detected motion type (also shown in the dropdown — rename it below if it's wrong).</li>
+ <li>Drag <b>speed</b> to slow a fast strobe down. Type a better name, click <b>set name</b>, then <b>export catalog</b> to copy all your names out.</li>
+</ul>
+</details>
 <div class=lab>name <input id=nm style="width:260px"> <button id=save>set name</button> <button id=exp>export catalog</button></div>
 <pre id=out class=lab></pre>
 <script>
@@ -115,12 +131,17 @@ const CAT = /*__DATA__*/[];
 const sel=document.getElementById('sel'),stage=document.getElementById('stage'),info=document.getElementById('info'),nm=document.getElementById('nm');
 let heads=[],hexs=[],cur=0,fi=0,playing=true,timer=null;
 CAT.forEach((c,i)=>{let o=document.createElement('option');o.value=i;o.textContent=`${c.program} — ${c.name}`;sel.appendChild(o);});
-function buildHeads(n){stage.innerHTML='';heads=[];hexs=[];for(let i=0;i<n;i++){let col=document.createElement('div');col.className='col';let d=document.createElement('div');d.className='head';let h=document.createElement('div');h.className='hx';h.textContent='00';col.appendChild(d);col.appendChild(h);stage.appendChild(col);heads.push(d);hexs.push(h);}}
+function buildHeads(n){stage.innerHTML='';heads=[];hexs=[];for(let i=0;i<n;i++){let col=document.createElement('div');col.className='col';
+ let fx=document.createElement('div');fx.className='fxn';fx.textContent='F'+(i+1);
+ let d=document.createElement('div');d.className='head';
+ let h=document.createElement('div');h.className='hx';h.textContent='00';
+ col.append(fx,d,h);stage.appendChild(col);heads.push(d);hexs.push(h);}}
 function render(){const c=CAT[cur],fd=c.frames_data||[];if(!fd.length)return;const fr=fd[fi%fd.length];
  // 0x00 = off (dark). Nonzero = flashing in some mode/intensity; floor keeps even small
  // values visible, then scale by value so mode differences (E6 vs E0 vs 86) still read.
- fr.forEach((v,i)=>{const a=v===0?0:0.42+0.58*(v/255);heads[i].style.background=v===0?'#000':`rgba(255,255,${(165+90*(v/255))|0},${a})`;heads[i].style.boxShadow=v?`0 0 ${(24*a)|0}px rgba(255,255,190,${a})`:'0 0 0 1px #30363d inset';hexs[i].textContent=v.toString(16).toUpperCase().padStart(2,'0');});
- info.textContent=`${c.kind} · state ${(fi%fd.length)+1}/${fd.length}`;}
+ fr.forEach((v,i)=>{const a=v===0?0:0.42+0.58*(v/255);heads[i].style.background=v===0?'#000':`rgba(255,255,${(165+90*(v/255))|0},${a})`;heads[i].style.boxShadow=v?`0 0 ${(24*a)|0}px rgba(255,255,190,${a})`:'0 0 0 1px #30363d inset';hexs[i].textContent=v.toString(16).toUpperCase().padStart(2,'0');hexs[i].className=v?'hx on':'hx';});
+ const lit=fr.filter(v=>v).length;
+ info.textContent=`pattern: ${c.kind}  ·  state ${(fi%fd.length)+1}/${fd.length}  ·  ${lit}/${fr.length} heads firing`;}
 function load(i){cur=i;fi=0;const c=CAT[i];buildHeads((c.frames_data&&c.frames_data[0]||new Array(8)).length);nm.value=c.name;render();}
 function setSpeed(){clearInterval(timer);timer=setInterval(()=>{if(playing){fi++;render();}},1000/document.getElementById('spd').value);}
 sel.onchange=()=>load(+sel.value);
