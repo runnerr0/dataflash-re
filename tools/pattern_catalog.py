@@ -23,16 +23,21 @@ TOKEN = re.compile(r'([0-9A-Fa-f]{2})([Cd])')
 
 
 def load_frames(path, nheads):
-    """Each frame = 55 40 + nheads data bytes; one byte per fixture (0-255)."""
-    txt = open(path, encoding="utf-8", errors="replace").read()
-    data = [int(v, 16) for v, t in TOKEN.findall(txt) if t == 'd']
-    frames, i = [], 0
-    while i < len(data) - (nheads + 1):
-        if data[i] == 0x55 and data[i + 1] == 0x40:
-            frames.append(list(data[i + 2:i + 2 + nheads]))
-            i += 2 + nheads
-        else:
-            i += 1
+    """Real frame = `55 40` (both 9th=0) + nheads fixture bytes, then a 00 + a run of
+    heartbeats until the next header. We anchor on the header in the *tagged* token
+    stream (robust to the sniffer's flaky 9th bit on heartbeats, which sprinkles
+    stray 00d/00C through the gap) and take the 8 fixture bytes by position. Then we
+    collapse consecutive identical frames so the animation steps through actual
+    program STATES, not heartbeat-paced re-sends."""
+    toks = TOKEN.findall(open(path, encoding="utf-8", errors="replace").read())
+    hdr = [i for i in range(len(toks) - 1)
+           if toks[i] == ('55', 'd') and toks[i + 1] == ('40', 'd')]
+    frames = []
+    for i in hdr:
+        if i + 1 + nheads < len(toks):
+            fr = [int(toks[i + 2 + j][0], 16) for j in range(nheads)]
+            if not frames or frames[-1] != fr:        # collapse heartbeat re-sends
+                frames.append(fr)
     return frames
 
 
@@ -102,8 +107,10 @@ let heads=[],hexs=[],cur=0,fi=0,playing=true,timer=null;
 CAT.forEach((c,i)=>{let o=document.createElement('option');o.value=i;o.textContent=`${c.program} — ${c.name}`;sel.appendChild(o);});
 function buildHeads(n){stage.innerHTML='';heads=[];hexs=[];for(let i=0;i<n;i++){let col=document.createElement('div');col.className='col';let d=document.createElement('div');d.className='head';let h=document.createElement('div');h.className='hx';h.textContent='00';col.appendChild(d);col.appendChild(h);stage.appendChild(col);heads.push(d);hexs.push(h);}}
 function render(){const c=CAT[cur],fd=c.frames_data||[];if(!fd.length)return;const fr=fd[fi%fd.length];
- fr.forEach((v,i)=>{const a=v/255;heads[i].style.background=`rgba(255,255,${(170+85*a)|0},${a})`;heads[i].style.boxShadow=a>0.04?`0 0 ${(20*a)|0}px rgba(255,255,190,${a})`:'0 0 0 1px #30363d inset';hexs[i].textContent=v.toString(16).toUpperCase().padStart(2,'0');});
- info.textContent=`${c.kind} · frame ${(fi%fd.length)+1}/${fd.length} · ${c.frames} captured`;}
+ // 0x00 = off (dark). Nonzero = flashing in some mode/intensity; floor keeps even small
+ // values visible, then scale by value so mode differences (E6 vs E0 vs 86) still read.
+ fr.forEach((v,i)=>{const a=v===0?0:0.42+0.58*(v/255);heads[i].style.background=v===0?'#000':`rgba(255,255,${(165+90*(v/255))|0},${a})`;heads[i].style.boxShadow=v?`0 0 ${(24*a)|0}px rgba(255,255,190,${a})`:'0 0 0 1px #30363d inset';hexs[i].textContent=v.toString(16).toUpperCase().padStart(2,'0');});
+ info.textContent=`${c.kind} · state ${(fi%fd.length)+1}/${fd.length}`;}
 function load(i){cur=i;fi=0;const c=CAT[i];buildHeads((c.frames_data&&c.frames_data[0]||new Array(8)).length);nm.value=c.name;render();}
 function setSpeed(){clearInterval(timer);timer=setInterval(()=>{if(playing){fi++;render();}},1000/document.getElementById('spd').value);}
 sel.onchange=()=>load(+sel.value);
@@ -119,7 +126,7 @@ def main():
     ap = argparse.ArgumentParser(description="Auto-name + web-preview captured Dataflash programs")
     ap.add_argument("--indir", default="captures/sniff")
     ap.add_argument("--fixtures", type=int, default=8, help="heads = data bytes per frame (1 byte/fixture)")
-    ap.add_argument("--maxframes", type=int, default=160, help="frames per program embedded in preview")
+    ap.add_argument("--maxframes", type=int, default=1000, help="distinct states per program embedded in preview")
     a = ap.parse_args()
     files = sorted(glob.glob(os.path.join(a.indir, "prog-*.txt")))
     if not files:
