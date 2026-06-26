@@ -35,7 +35,10 @@ static void rxTask(void*) {
     noInterrupts();                     // shield this one frame (~29 us) on this core only
     uint16_t frame = 0;
     for (int b = 0; b < 10; b++) {      // d0..d7 (LSB first), then 9th, then stop
-      uint32_t target = t0 + ((2u * (uint32_t)b + 3u) * CPB) / 2u;  // center of bit b = (b + 1.5)*CPB
+      // bit center = (b + 1.5)*CPB; sample the 9th bit (b==8) +0.25 bit later so a
+      // slightly slow d7 edge can't bleed into it (fixes the lone flaky case, 0x80).
+      float frac = (b == 8) ? 1.75f : 1.5f;
+      uint32_t target = t0 + (uint32_t)(((float)b + frac) * (float)CPB);
       while ((int32_t)(ESP.getCycleCount() - target) < 0) {}
       if (rd()) frame |= (1u << b);
     }
