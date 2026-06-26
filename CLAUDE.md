@@ -29,7 +29,7 @@ Reverse-engineering the **original Lightwave Research / High End Systems "Datafl
 - Physical: **RS-422/485 differential** (DS8921), 3-pin — **Pin1=GND, Pin2=Data−, Pin3=Data+** (DMX convention). Each fixture is an active repeater w/ power-off relay bypass.
 - Serial: **375000 baud, 9 data bits** (8051 Mode 2, SMOD=1, 12 MHz). No DMX break.
 - **9th bit = control/data flag** (1=control, 0=data). Markers: `0x55`=ARM, `0x7F`=START, `0x00`=HEARTBEAT(~120Hz), `0xF7`=STOP/FIRE, `0xFF`=CLEAR, `0x12+95 88 25 A8`=special.
-- Data byte = **2 fixtures × 4-bit intensity**; positional addressing via 8 DIP switches (byte index=addr÷2, nibble=addr&1).
+- Data byte: **8-head controller (the one we captured)** = **1 fixture per byte, 8-bit** (`55 40` + 8 bytes = 8 fixtures; chassis says "EIGHT FIXTURES LINEAR", verified empirically). **256-head firmware variant** = 2 fixtures × 4-bit (byte index=addr÷2, nibble=addr&1). Same `55 40` framing family, two product variants.
 - Packet: `ARM, START, data×N, STOP` + heartbeats. Tags: [C]firmware [P]patent [S]schematic [?]needs-capture.
 
 ## IMPORTANT: 9-bit TX is via RMT, not UART

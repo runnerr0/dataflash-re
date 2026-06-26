@@ -12,11 +12,14 @@ assets/schematics/
 _duplicates/
 
 # Raw capture dumps (can be large/binary); keep captures/README.md + small decoded logs
+# (gitignore has no inline comments — keep each pattern on its own line)
 captures/*.bin
 captures/*.raw
 captures/*.sr
 captures/*.vcd
-captures/sniff/          # sniff_sampler.py per-program captures (local data)
+captures/*.txt
+# sniff_sampler.py per-program captures (local data)
+captures/sniff/
 
 # Python
 __pycache__/

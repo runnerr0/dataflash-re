@@ -11,12 +11,12 @@ controller hands-free:
        a few seconds, saves the raw stream, and prints a decoded summary.
     3. Repeat for the next program. Type 'q' to quit.
 
-Each frame the controller sends is `0x55 0x40` + 8 data bytes (16 fixtures, 2 per
-byte, 4-bit each); the summary pulls those frames out so you can see the animation.
+Each frame the controller sends is `0x55 0x40` + 8 data bytes (8 fixtures, one
+byte = one fixture, 8-bit value); the summary pulls those frames out so you see the animation.
 
 Usage:
-    python3 tools/sniff_sampler.py                       # auto-detect port, 4s captures
-    python3 tools/sniff_sampler.py --port /dev/cu.usbmodemXXXX --secs 5
+    python3 tools/sniff_sampler.py                       # auto-detect port, 8s captures
+    python3 tools/sniff_sampler.py --port /dev/cu.usbmodemXXXX --secs 8
 """
 import argparse, glob, os, re, sys, time
 from collections import Counter
@@ -52,7 +52,7 @@ def summarize(txt):
 def main():
     ap = argparse.ArgumentParser(description="Interactive Dataflash 9-bit sniffer sampler")
     ap.add_argument("--port", default=None, help="S3 sniffer USB-CDC port (auto-detect if omitted)")
-    ap.add_argument("--secs", type=float, default=4.0, help="seconds to record per program")
+    ap.add_argument("--secs", type=float, default=8.0, help="seconds to record per program (8s catches a full cycle on slow programs)")
     ap.add_argument("--outdir", default="captures/sniff", help="where to save raw captures")
     a = ap.parse_args()
 

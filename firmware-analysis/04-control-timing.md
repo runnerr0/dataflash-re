@@ -16,8 +16,11 @@ Dispatcher at `0x0C06` (only reached when `JNB RB8` at `0x0C87` sees 9th=1):
 | `0x12` SPECIAL | `0x0BC6` | expects `95 88 25 A8` → jumps `0x051D`. |
 | (other) | `0x0C51` | default: `CLR bit0x40` (clears active). |
 
+## Fixture-count variants — IMPORTANT  [C]/[wire]
+The disassembled firmware (Rev 2.82) is the **256-fixture** variant: 128 data bytes, **2 fixtures × 4-bit intensity per byte**, nibble selected by `addr&1`. **But the controller we captured is the 8-fixture variant** ("EIGHT FIXTURES LINEAR" chassis label), and its wire format is **8 data bytes = 8 fixtures, ONE byte per fixture** (8-bit) — verified empirically (see `protocol/dataflash-protocol-spec.md` → "Live OEM controller capture": chase walks byte-by-byte across 8 heads; wash drives full-range 0–255 values that can't be nibbles). Same `55 40` framing family, different head count + per-fixture packing. The byte's two nibbles on the 8-head wire likely encode **intensity + flash-mode** per fixture (background `E6` vs highlight `E0`/`86`). Treat "2 fixtures/byte" below as the **256-head firmware's** model, not this controller's.
+
 ## Firing / timing model  [C]
-- **Data byte (9th=0):** position counter `0x34` counts down one per data byte; when it reaches 0 the byte is captured to **`0x30`, `0x31`, `0x32` (three identical copies — likely per-AC-phase / triple-buffer)**. Each byte = 2 fixtures × 4-bit intensity.
+- **Data byte (9th=0):** position counter `0x34` counts down one per data byte; when it reaches 0 the byte is captured to **`0x30`, `0x31`, `0x32` (three identical copies — likely per-AC-phase / triple-buffer)**. (256-head firmware: each byte = 2 fixtures × 4-bit intensity. 8-head controller wire: each byte = 1 fixture, 8-bit.)
 - The captured intensity (`0x30/31/32`) is loaded into **R0/R1/R2 and counted down by heartbeats** (receive loops at `0x0571`, `0x05C7`: `DEC R0/R1/R2` per heartbeat until zero). So the **intensity value sets a heartbeat-counted timing**; the strobe fires **zero-cross-synchronized and heartbeat-paced**, NOT on a per-flash FIRE byte. Cooldown/thermal limiting is also heartbeat-paced.
 - ⇒ "Brightness / flash rate" = how the 4-bit intensity modulates the heartbeat-counted, zero-cross-synced flash. This is why normal program output needs only heartbeats + data, no FIRE.
 
