@@ -35,6 +35,20 @@ Traced the data→flash path (2026-06-26). What the **256-head firmware** does, 
 2. *Even/odd parity placement* (the firmware's own rule, applied per byte): contradicted — every byte position 0–7 has its low **and** high nibble active about equally (~19% each), no alternation.
 ⇒ The 8-head fixtures use **both nibbles per fixture** in a scheme this 256-head firmware does not describe. The firmware pins the **intensity mechanism (4-bit, gamma curves above, P3.4 FIRE timing, P3.6 mode pin)** but **cannot decode the 8-head byte's full 8 bits** — that still needs the 8-head fixture's own firmware image or a real fixture on a scope.
 
+## First-principles derivation of the 8-head firmware  [derived]
+We don't have the 8-head fixture image, but the 256-head firmware constrains it tightly. **The only thing that makes a byte hold two fixtures is `ANL #0xFE; RR A` (÷2) + the `0x0BAC` nibble-select** — remove those and the same codebase is a 1-byte-per-fixture decoder. So the 8-head image is most likely *this firmware minus the ÷2/nibble step*.
+
+**Addressing / fixture identifier (high confidence):**
+- Identifier = **3-bit DIP address (0–7)**. The DIP read is a full 8-bit port (`MOV A,P1` @`0x0A8C`); the 8-head just masks the low 3 bits instead of computing `addr÷2`.
+- Byte slot = **address directly** (position counter = `addr`, not `addr÷2`); consumes the **whole 8-bit byte** (no nibble select).
+- Selects its byte by **counting position after `55 40`** (frame-relative; START is never sent — proven on the wire). `0x55` = alternating-bit preamble; **`0x40` = the 8-head frame/format signature**, replacing the 256-head's `ARM/START` control-marker packet with a data-plane sync.
+
+**8-bit byte content (medium confidence, by contrast):** the flash engine is fundamentally 4-bit (16-entry gamma → `P3.4` FIRE → cooldown clamp). An 8-head fixture has 4 spare bits/fixture. Most parsimonious reuse of the same silicon:
+- **4 bits = intensity** (reuse the gamma engine untouched), and
+- spare nibble = the **flash MODE the 256-head sources from the `P3.6` hardware pin** (which already selects curve `0x0164` vs `0x0177`) — promoted into the data so the controller sets mode per-fixture per-frame.
+- ⇒ derived byte ≈ **`[4-bit mode | 4-bit intensity]`** = the data-borne version of "P3.6 + nibble".
+- **Caveat:** the capture shows *both* nibbles varying per fixture with no clean fixed split (prog-10 moves the high nibble in some steps, the low in others), so the exact bit assignment (which nibble; whether mode remaps intensity) isn't pinned — needs the 8-head image/fixture. But the *content* is almost certainly {4-bit intensity, 4-bit mode}, not 8-bit linear brightness (argued against by the discrete non-ramp values and the 16-entry table).
+
 ## Firing / timing model  [C]
 - **Data byte (9th=0):** position counter `0x34` counts down one per data byte; when it reaches 0 the byte is captured to **`0x30`, `0x31`, `0x32` (three identical copies — likely per-AC-phase / triple-buffer)**. (256-head firmware: each byte = 2 fixtures × 4-bit intensity. 8-head controller wire: each byte = 1 fixture, 8-bit.)
 - The captured intensity (`0x30/31/32`) is loaded into **R0/R1/R2 and counted down by heartbeats** (receive loops at `0x0571`, `0x05C7`: `DEC R0/R1/R2` per heartbeat until zero). So the **intensity value sets a heartbeat-counted timing**; the strobe fires **zero-cross-synchronized and heartbeat-paced**, NOT on a per-flash FIRE byte. Cooldown/thermal limiting is also heartbeat-paced.
