@@ -58,6 +58,11 @@ struct Config {
   uint8_t  testMode     = 0;        // 0=live, 1=all-on, 2=chase, 3=single
   uint8_t  testLevel    = 8;        // 0..15 (4-bit)
   uint16_t testIndex    = 0;        // fixture for single/chase
+  // audio input (DF_AUDIO builds)
+  bool     audioEnable  = false;    // master enable for audio reactivity
+  uint8_t  audioSource  = 0;        // 0=mic (I2S1), 1=line-in (I2S0)
+  uint8_t  audioMode    = 1;        // 0=off,1=modulate,2=beat-advance(Audio1),3=beat-halt(Audio2)
+  uint8_t  audioGain    = 96;       // input gain x16 (96 => 6.0); see audio.cpp
 
   void load() {
     Preferences p; p.begin("dfbridge", true);
@@ -70,6 +75,10 @@ struct Config {
     refreshHz    = p.getUChar("rhz",   refreshHz);
     heartbeatHz  = p.getUChar("hhz",   heartbeatHz);
     outputEnable = p.getBool ("oen",   outputEnable);
+    audioEnable  = p.getBool ("aen",   audioEnable);
+    audioSource  = p.getUChar("asrc",  audioSource);
+    audioMode    = p.getUChar("amode", audioMode);
+    audioGain    = p.getUChar("again", audioGain);
     p.getString("host", hostname, sizeof(hostname));
     p.getString("wssid", wifiSsid, sizeof(wifiSsid));
     p.getString("wpass", wifiPass, sizeof(wifiPass));
@@ -86,6 +95,10 @@ struct Config {
     p.putUChar("rhz",   refreshHz);
     p.putUChar("hhz",   heartbeatHz);
     p.putBool ("oen",   outputEnable);
+    p.putBool ("aen",   audioEnable);
+    p.putUChar("asrc",  audioSource);
+    p.putUChar("amode", audioMode);
+    p.putUChar("again", audioGain);
     p.putString("host", hostname);
     p.putString("wssid", wifiSsid);
     p.putString("wpass", wifiPass);

@@ -5,6 +5,7 @@
 #include "patterns.h"
 #include "inputs.h"
 #include "dataflash_tx.h"
+#include "audio.h"
 #include <WiFiUdp.h>
 
 #define OSC_PORT     8000     // bridge listens here (TouchOSC "Send" port)
@@ -83,7 +84,13 @@ static void dispatch(OscMsg& m) {
   else if (eq(a,"/df/factor"))    g_pat.factor = constrain(i, 1, 8); // Multiply
   else if (eq(a,"/df/random"))    g_pat.randomOrder = (i != 0);     // Random
   else if (eq(a,"/df/modulate"))  g_pat.modulate = (i != 0);       // Modulate (audio amplitude)
-  else if (eq(a,"/df/audio"))     g_pat.audioLevel = clamp01(f);   // stub until audio-in wired
+  else if (eq(a,"/df/audio"))     g_pat.audioLevel = clamp01(f);   // manual level override (no audio HW)
+  // audio input subsystem (DF_AUDIO builds; g_aud exists either way)
+  else if (eq(a,"/df/audio/enable")) g_aud.enabled = (i != 0);
+  else if (eq(a,"/df/audio/source")) audio_select((AudioSource)(i != 0 ? AUD_LINEIN : AUD_MIC)); // 0=mic,1=line
+  else if (eq(a,"/df/audio/mode"))   g_aud.mode   = (AudioMode)constrain(i, 0, 3); // off/modulate/beat1/beat2
+  else if (eq(a,"/df/audio/gain"))   g_aud.gain   = 0.5f + clamp01(f) * 15.5f;
+  else if (eq(a,"/df/audio/gate"))   g_aud.gate   = clamp01(f);
   // pattern builder (Program/Stages)
   else if (eq(a,"/df/grid/steps"))g_pat.gridSteps = constrain(i, 1, PatternState::MAX_STEPS);
   else if (eq(a,"/df/grid/clear")){ if (i) memset(g_pat.grid, 0, sizeof(g_pat.grid)); }

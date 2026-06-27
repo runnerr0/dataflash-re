@@ -51,6 +51,7 @@ patterns.*    stage-sequencer strobe engine (free-runs); modifiers: factor/rando
 main.cpp      scheduler: PAT_LIVE=network passthrough; else patterns_render; refresh + heartbeats
 dataflash_tx.* RMT 9-bit/375k framing: ARM,START,<2 fixtures/byte>,STOP + heartbeats
 dataflash_rx.* 9-bit RX SNIFFER (bit-bang on core 1): recovers value + 9th bit [DF_SNIFF_MODE build only]
+audio.*       I2S audio in (mic=I2S1 INMP441 / line-in=I2S0, SW-select); DSP task -> envelope=g_pat.audioLevel (Modulate) + onset->g_pat.beatTicks (Audio1) [DF_AUDIO build only, env esp32-s3-audio]
 net.*  ETH+WiFi-AP fallback   webui.*  async status/config/test   config.h  NVS+pins   ui.h  OLED+encoder stub
 ```
 OSC schema + TouchOSC layout: `bridge/CONTROL-TOUCHOSC.md`. Pattern catalog: `bridge/PATTERNS.md`.
@@ -77,7 +78,8 @@ cd bridge && pio run -e esp32-s3-eth -t upload && pio device monitor -e esp32-s3
 2. **Live-capture a real controller** -> `captures/`; flip the spec's [?] items (ordering, heartbeat cadence, `0xFF`/`0x12`, nibble mapping). Use `nibbleSwap` if even/odd land wrong.
 3. **Find the duty/cooldown ceiling** on real heads (fast modes drop flashes by thermal self-protection) — note safe ranges for speed/factor/bpm.
 4. **TouchOSC**: build the 3-page layout per `CONTROL-TOUCHOSC.md`; generate builder-grid Lua + feedback routing for the chosen grid size.
-5. Later: audio-in for `modulate`/beat `advance`; OLED+encoder front panel (`ui.h`); non-blocking RMT; custom hardware.
+5. **Audio-in (in progress, env `esp32-s3-audio`):** dual-I2S (INMP441 mic / line-in ADC, SW-select) DSP task drives Modulate (`audioLevel`) + Audio-1 beat-advance (`beatTicks`). DONE: capture+envelope+onset, OSC `/df/audio/*`, builds clean. TODO: verify I2S pins on real S3-ETH header (placeholders 8-13), line-in MCLK if the PCM card needs it, Audio-2 (beat-halt), web-UI controls + meter, FFT frequency-banding (modern enhancement).
+6. Later: OLED+encoder front panel (`ui.h`); non-blocking RMT; custom hardware.
 
 ## Conventions
 - Working dir `/Users/runnerr0/Temp/dataflash-re`. Spec-driven: `protocol/...spec.md` is the source of truth; tag claims [C]/[P]/[S]/[?].

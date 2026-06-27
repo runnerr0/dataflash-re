@@ -42,7 +42,12 @@ struct PatternState {
   volatile uint8_t   factor      = 1;      // Multiply: repeat each stage N times (1..8)
   volatile bool      randomOrder = false;  // Random: shuffle stage order
   volatile bool      modulate    = false;  // intensity tracks audioLevel
-  volatile float     audioLevel  = 1.0f;   // 0..1 (stub until audio-in wired)
+  volatile float     audioLevel  = 1.0f;   // 0..1 (driven by audio.cpp when DF_AUDIO)
+
+  // audio beat-advance (OEM "Audio 1"): when set, the audio module advances stages
+  // by incrementing beatTicks on each detected onset instead of the time/rate clock.
+  volatile bool      useBeatTicks = false;
+  volatile uint32_t  beatTicks    = 0;
 
   // transport
   volatile bool      blackout = false;

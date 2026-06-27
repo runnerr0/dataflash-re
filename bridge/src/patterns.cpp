@@ -15,10 +15,15 @@ static inline uint8_t hiLevel() {
 // current stage index, applying Auto/Beat advance + Multiply(repeat) + Random(shuffle)
 static uint32_t advanceStage(uint32_t nowMs, uint16_t stageCount) {
   if (stageCount == 0) return 0;
-  float sps = g_pat.advanceBeat ? (g_pat.bpm / 60.0f)        // beat-driven
-                                : (0.5f + g_pat.speed * 12.0f); // Auto rate
-  uint32_t raw = (uint32_t)((nowMs / 1000.0) * sps);
   uint8_t f = g_pat.factor < 1 ? 1 : g_pat.factor;
+  uint32_t raw;
+  if (g_pat.useBeatTicks) {                                   // OEM Audio 1: one onset = one tick
+    raw = g_pat.beatTicks;
+  } else {
+    float sps = g_pat.advanceBeat ? (g_pat.bpm / 60.0f)       // fixed beat (bpm)
+                                  : (0.5f + g_pat.speed * 12.0f); // Auto rate
+    raw = (uint32_t)((nowMs / 1000.0) * sps);
+  }
   uint32_t st = raw / f;                                      // Multiply: hold N ticks
   if (g_pat.randomOrder) st = st * 2654435761u >> 8;          // Random: shuffle order
   return st % stageCount;

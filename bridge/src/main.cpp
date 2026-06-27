@@ -11,6 +11,7 @@
 #include "dataflash_tx.h"
 #include "webui.h"
 #include "ui.h"
+#include "audio.h"
 
 Config g_cfg;
 
@@ -94,6 +95,7 @@ void setup() {
   osc_begin();         // TouchOSC control
   webui_begin();
   ui_begin();
+  audio_begin();       // audio-reactive input (no-op unless DF_AUDIO)
   Serial.println("[dataflash-bridge] ready");
 }
 
