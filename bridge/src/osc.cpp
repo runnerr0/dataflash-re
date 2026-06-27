@@ -88,9 +88,11 @@ static void dispatch(OscMsg& m) {
   // audio input subsystem (DF_AUDIO builds; g_aud exists either way)
   else if (eq(a,"/df/audio/enable")) g_aud.enabled = (i != 0);
   else if (eq(a,"/df/audio/source")) audio_select((AudioSource)(i != 0 ? AUD_LINEIN : AUD_MIC)); // 0=mic,1=line
-  else if (eq(a,"/df/audio/mode"))   g_aud.mode   = (AudioMode)constrain(i, 0, 3); // off/modulate/beat1/beat2
+  else if (eq(a,"/df/audio/mode"))   g_aud.mode   = (AudioMode)constrain(i, 0, 3); // off/level/pulse/advance
+  else if (eq(a,"/df/audio/band"))   g_aud.band   = (AudioBand)constrain(i, 0, 3); // full/bass/mid/treble
   else if (eq(a,"/df/audio/gain"))   g_aud.gain   = 0.5f + clamp01(f) * 15.5f;
   else if (eq(a,"/df/audio/gate"))   g_aud.gate   = clamp01(f);
+  else if (eq(a,"/df/audio/pulse"))  g_aud.pulseMs = (uint16_t)constrain(i, 5, 200);
   // pattern builder (Program/Stages)
   else if (eq(a,"/df/grid/steps"))g_pat.gridSteps = constrain(i, 1, PatternState::MAX_STEPS);
   else if (eq(a,"/df/grid/clear")){ if (i) memset(g_pat.grid, 0, sizeof(g_pat.grid)); }

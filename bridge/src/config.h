@@ -47,8 +47,8 @@ struct Config {
   // protocol mapping
   uint16_t universe     = 0;        // Art-Net/sACN universe to listen on
   uint16_t startChannel = 1;        // DMX channel (1-based) for fixture address 0
-  uint16_t fixtureCount = 32;       // number of Dataflash fixtures (1..256)
-  bool     nibbleSwap   = false;    // flip even/odd->high/low nibble if capture disagrees
+  uint16_t fixtureCount = 8;        // 8-head controller = 8 fixtures (1 byte each)
+  bool     nibbleSwap   = false;    // legacy (256-head 2-per-byte model); unused by the 8-head broadcast
   bool     htpMerge     = true;     // HTP-merge Art-Net + sACN; else last-arrived wins
   // output
   uint8_t  refreshHz    = 44;       // full-packet refresh rate
@@ -61,7 +61,8 @@ struct Config {
   // audio input (DF_AUDIO builds)
   bool     audioEnable  = false;    // master enable for audio reactivity
   uint8_t  audioSource  = 0;        // 0=mic (I2S1), 1=line-in (I2S0)
-  uint8_t  audioMode    = 1;        // 0=off,1=modulate,2=beat-advance(Audio1),3=beat-halt(Audio2)
+  uint8_t  audioMode    = 1;        // 0=off, 1=level, 2=pulse, 3=advance
+  uint8_t  audioBand    = 0;        // 0=full, 1=bass, 2=mid, 3=treble
   uint8_t  audioGain    = 96;       // input gain x16 (96 => 6.0); see audio.cpp
 
   void load() {
@@ -78,6 +79,7 @@ struct Config {
     audioEnable  = p.getBool ("aen",   audioEnable);
     audioSource  = p.getUChar("asrc",  audioSource);
     audioMode    = p.getUChar("amode", audioMode);
+    audioBand    = p.getUChar("aband", audioBand);
     audioGain    = p.getUChar("again", audioGain);
     p.getString("host", hostname, sizeof(hostname));
     p.getString("wssid", wifiSsid, sizeof(wifiSsid));
@@ -98,6 +100,7 @@ struct Config {
     p.putBool ("aen",   audioEnable);
     p.putUChar("asrc",  audioSource);
     p.putUChar("amode", audioMode);
+    p.putUChar("aband", audioBand);
     p.putUChar("again", audioGain);
     p.putString("host", hostname);
     p.putString("wssid", wifiSsid);

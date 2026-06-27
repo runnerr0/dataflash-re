@@ -79,27 +79,19 @@ void DataflashTx::flush() {
   reset();
 }
 
-void DataflashTx::sendRefresh(const uint8_t* intensities, uint16_t count, bool nibbleSwap) {
+void DataflashTx::sendRefresh(const uint8_t* intensities, uint16_t count) {
   if (count == 0) return;
   if (count > 256) count = 256;
   reset();
 
-  // control header
-  addByte(DF_ARM,   true);
-  addByte(DF_START, true);
-
-  // data: two fixtures (4-bit each) per byte, positional from START.
-  uint16_t dataBytes = (count + 1) / 2;
-  for (uint16_t k = 0; k < dataBytes; k++) {
-    uint8_t evenFix = intensities[2*k]              & 0x0F;
-    uint8_t oddFix  = (2*k + 1 < count) ? (intensities[2*k + 1] & 0x0F) : 0;
-    // default: even address -> high nibble, odd -> low nibble (verify on capture)
-    uint8_t b = nibbleSwap ? ((oddFix << 4) | evenFix) : ((evenFix << 4) | oddFix);
-    addByte(b, false);
-  }
-
-  // fire
-  addByte(DF_STOP_FIRE, true);
+  // 8-head broadcast: 55 40 + one 8-bit intensity per fixture + trailing 00.
+  // All data-plane (9th bit = 0). No ARM/START/FIRE — this is what the OEM
+  // controller actually emits (protocol spec "Live OEM controller capture").
+  addByte(DF_FRAME0, false);            // 0x55 preamble
+  addByte(DF_FRAME1, false);            // 0x40 frame-start
+  for (uint16_t i = 0; i < count; i++)
+    addByte(intensities[i], false);     // one fixture per byte, full 8-bit
+  addByte(0x00, false);                 // trailing frame terminator (seen on the wire)
 
   flush();
   packets++;

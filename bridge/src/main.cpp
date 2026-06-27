@@ -23,21 +23,23 @@ static void buildIntensities() {
   uint16_t n = g_cfg.fixtureCount;
 
   if (g_pat.pattern != PAT_LIVE) {            // OSC/web-selected on-device pattern
-    patterns_render(intensities, n, millis());
+    patterns_render(intensities, n, millis()); // engine outputs 4-bit (0..15)
+    for (uint16_t i = 0; i < n; i++) intensities[i] *= 17;  // -> 8-bit (0..255) for the wire
     return;
   }
 
-  // PAT_LIVE: network passthrough, with the web UI's quick test modes available
+  // PAT_LIVE: network passthrough (full 8-bit), with web UI quick-test modes.
+  uint8_t tl = g_cfg.testLevel > 15 ? 255 : g_cfg.testLevel * 17;   // 4-bit test level -> 8-bit
   for (uint16_t i = 0; i < n; i++) {
     uint8_t v = 0;
     switch (g_cfg.testMode) {
       case 0: { uint16_t ch = (g_cfg.startChannel - 1) + i;
-                v = g_dmx.merged(ch, g_cfg.htpMerge) >> 4; break; }
-      case 1: v = g_cfg.testLevel; break;
-      case 2: v = (i == chasePos) ? g_cfg.testLevel : 0; break;
-      case 3: v = (i == g_cfg.testIndex) ? g_cfg.testLevel : 0; break;
+                v = g_dmx.merged(ch, g_cfg.htpMerge); break; }   // full 8-bit DMX
+      case 1: v = tl; break;
+      case 2: v = (i == chasePos) ? tl : 0; break;
+      case 3: v = (i == g_cfg.testIndex) ? tl : 0; break;
     }
-    intensities[i] = v & 0x0F;
+    intensities[i] = v;
   }
 }
 
@@ -114,7 +116,7 @@ void loop() {
   if (now - lastRefreshMs >= refreshMs) {
     lastRefreshMs = now;
     buildIntensities();
-    g_tx.sendRefresh(intensities, g_cfg.fixtureCount, g_cfg.nibbleSwap);
+    g_tx.sendRefresh(intensities, g_cfg.fixtureCount);
     if (g_pat.pattern == PAT_LIVE && g_cfg.testMode == 2 && g_cfg.fixtureCount)
       chasePos = (chasePos + 1) % g_cfg.fixtureCount;   // web chase
   } else if (now - lastHbMs >= hbMs) {
