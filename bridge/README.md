@@ -24,6 +24,36 @@ Each fixture is an active repeater, so only fixture #1's Data In is driven; the
 chain self-repeats. If output is inverted/garbled, swap A/B. Add 120R across A/B
 at the fixture for long runs (bench runs usually fine on the fixture's bias).
 
+### Dual-mode harness (S3-ETH): bridge AND sniffer on one wiring
+The firmware is unified — one build is both the bridge (TX) and the 9-bit sniffer
+(RX), role chosen at boot (`g_cfg.role`, or **hold BOOT/GPIO0 at power-on → sniffer**).
+A MAX485 is half-duplex, so one transceiver does both; the only trick is sharing
+**GPIO17** for `DI` (TX) and `RO` (RX) without level-frying the 3.3 V pin.
+
+```
+ MAX485 RO (pin1, 0–5V out) ──[ 1kΩ ]──┬──────── GPIO17   (DI when TX, RO-read when RX)
+ MAX485 DI (pin4, input) ──────────────┤  "node"
+                                        │
+                                     [ 2kΩ ]
+                                        │
+                                       GND
+ MAX485 DE (pin3) ┐
+ MAX485 RE (pin2) ┴──────── GPIO16   DIR:  HIGH = transmit,  LOW = listen
+```
+Why it's safe — only one side ever drives the **node** because `DE`+`RE` are tied
+into one **DIR** line:
+- **TX (DIR=HIGH):** `RE` high → receiver off → `RO` is tri-stated (the 1 kΩ leads
+  to nothing). GPIO17 drives the node; the 2 kΩ is just a light load. `DI` sees clean
+  3.3 V/0 V. (3.3 V is a valid logic high into the 5 V `DI` input.)
+- **RX (DIR=LOW):** `RE` low → `RO` drives 0–5 V; the 1k/2k divider drops it to
+  **3.33 V** at the node; GPIO17 (input) reads it. `DI` is ignored (`DE` low).
+
+So the 1k/2k divider does double duty: a real voltage divider in RX, and "out of
+the way" in TX (1 kΩ dangling to a tri-stated `RO`). The 2 kΩ also gives the node a
+defined LOW at idle/boot. Pin map for this build: `DF_TX_PIN=DF_RX_PIN=17`,
+`DF_DE_PIN=16` (env `esp32-s3-eth`). A/B → fixtures (bridge), the OEM controller
+(sniffer), or a USB-RS485 adapter (bench loopback).
+
 ## Why RMT, not UART
 The 9th bit selects control(1) vs data(0). Classic ESP32 UART has only computed
 even/odd parity (no stick parity), so it can't hold a constant 9th bit. We emit
