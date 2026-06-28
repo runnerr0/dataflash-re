@@ -1,7 +1,10 @@
-// main.cpp — Dataflash bridge: Art-Net / sACN / OSC -> Dataflash RS-485.
-// - As a TARGET: receives a DMX universe (Art-Net/sACN) and re-emits it (PAT_LIVE).
-// - As a CONTROLLER: TouchOSC over OSC selects on-device patterns + a custom grid,
-//   which free-run on the ESP32 so the rig keeps going if the iPad disconnects.
+// main.cpp — Dataflash bridge + sniffer, UNIFIED firmware (role chosen at boot).
+// - BRIDGE role: Art-Net/sACN/OSC -> Dataflash RS-485 (the real 8-head broadcast).
+// - SNIFFER role: 9-bit RX listen-only protocol analyzer.
+// One MAX485 harness does both (half-duplex): GPIO17 = DI (TX) AND RO-via-divider
+// (RX, receiver tri-stated during TX); GPIO16 = DE+RE tied = DIR (HIGH=TX, LOW=RX).
+// Role = g_cfg.role (NVS, default DF_ROLE_DEFAULT), OR hold BOOT (GPIO0) at power-on
+// to force SNIFFER for that boot — no reflash, no rewiring.
 #include <Arduino.h>
 #include "config.h"
 #include "net.h"
@@ -9,13 +12,16 @@
 #include "patterns.h"
 #include "osc.h"
 #include "dataflash_tx.h"
+#include "dataflash_rx.h"
 #include "webui.h"
 #include "ui.h"
 #include "audio.h"
+#include "soc/gpio_struct.h"
 
 Config g_cfg;
+static bool s_sniffer = false;
 
-static uint8_t  intensities[256];   // 4-bit per fixture, persists across frames
+static uint8_t  intensities[256];   // 8-bit per fixture, persists across frames
 static uint32_t lastRefreshMs = 0, lastHbMs = 0;
 static uint16_t chasePos = 0;
 
@@ -43,18 +49,15 @@ static void buildIntensities() {
   }
 }
 
-#ifdef DF_SNIFF_MODE
-// ---- 9-bit RX sniffer build: listen-only, decode + print (value, 9th bit) ----
-#include "dataflash_rx.h"
-#include "soc/gpio_struct.h"
-void setup() {
-  Serial.begin(115200); delay(200);
-  Serial.println("\n[dataflash-sniff] 9-bit RX sniffer @ 375000");
-  Serial.printf("[dataflash-sniff] wire: MAX485 RO->GPIO%d, RE->GND, DE->GND, A/B on controller pair\n", DF_RX_PIN);
-  Serial.println("[dataflash-sniff] output: <hex><C|d>  (C=control 9th=1, d=data 9th=0); '[burst]' = >0.4ms gap\n");
-  // Diagnostic FIRST (single-threaded, can't be starved): is GPIO16 even toggling?
+// ---------------- SNIFFER role: 9-bit RX, listen-only -----------------------
+static void snifferSetup() {
+  Serial.println("\n[dataflash] role=SNIFFER — 9-bit RX @ 375000");
+  Serial.printf("[dataflash] wire: MAX485 RO->GPIO%d (via divider), DIR(GPIO%d)=LOW=listen\n",
+                DF_RX_PIN, DF_DE_PIN);
+  Serial.println("[dataflash] output: <hex><C|d>  (C=control 9th=1, d=data 9th=0); '[burst]'=>0.4ms gap\n");
+  pinMode(DF_DE_PIN, OUTPUT); digitalWrite(DF_DE_PIN, LOW);   // DIR low = receiver on, driver off
   pinMode(DF_RX_PIN, INPUT);
-  Serial.println("[diag] sampling GPIO16 activity for 1s before starting the decoder...");
+  Serial.printf("[diag] sampling GPIO%d for 1s before starting the decoder...\n", DF_RX_PIN);
   for (int i = 0; i < 5; i++) {
     int last = (GPIO.in >> DF_RX_PIN) & 1, lvl = last, edges = 0;
     uint32_t t = micros();
@@ -64,17 +67,17 @@ void setup() {
   Serial.println("[diag] starting decoder...");
   df_rx_begin(DF_RX_PIN);
 }
-void loop() {
+
+static void snifferLoop() {
   static uint32_t lastUs = 0, lastStat = 0, nwords = 0, nbursts = 0; static int col = 0;
   DfWord w;
   while (df_rx_pop(&w)) {
     uint32_t now = micros();
-    if (now - lastUs > 400) { Serial.print("\n[burst] "); col = 0; nbursts++; }   // >0.4ms gap = new packet
+    if (now - lastUs > 400) { Serial.print("\n[burst] "); col = 0; nbursts++; }
     lastUs = now; nwords++;
     Serial.printf("%02X%c ", w.value, w.ninth ? 'C' : 'd');
     if (++col % 16 == 0) Serial.print("\n        ");
   }
-  // 1 Hz diagnostic: is GPIO16 even toggling? (edges=0 -> no signal at the pin)
   if (millis() - lastStat > 1000) {
     lastStat = millis();
     int last = (GPIO.in >> DF_RX_PIN) & 1, lvl = last, edges = 0;
@@ -84,13 +87,11 @@ void loop() {
                   DF_RX_PIN, lvl, edges, (unsigned long)nwords, (unsigned long)nbursts);
   }
 }
-#else
-void setup() {
-  Serial.begin(115200); delay(50);
-  Serial.println("\n[dataflash-bridge] boot");
-  g_cfg.load();
 
-  Serial.printf("[dataflash-bridge] RS-485 TX=GPIO%d  DE=GPIO%d\n", DF_TX_PIN, DF_DE_PIN);
+// ---------------- BRIDGE role: network/OSC -> RS-485 ------------------------
+static void bridgeSetup() {
+  Serial.println("\n[dataflash] role=BRIDGE");
+  Serial.printf("[dataflash-bridge] RS-485 DI=GPIO%d  DIR(DE+RE)=GPIO%d\n", DF_TX_PIN, DF_DE_PIN);
   g_tx.begin(DF_TX_PIN, DF_DE_PIN);
   net_begin();
   inputs_begin();      // Art-Net + sACN
@@ -101,7 +102,7 @@ void setup() {
   Serial.println("[dataflash-bridge] ready");
 }
 
-void loop() {
+static void bridgeLoop() {
   net_loop();
   inputs_loop();
   osc_loop();
@@ -124,4 +125,20 @@ void loop() {
     g_tx.sendHeartbeat();   // feed fixtures' cooldown/timebase between refreshes
   }
 }
-#endif // DF_SNIFF_MODE
+
+// ---------------- entry: pick role at boot ----------------------------------
+void setup() {
+  Serial.begin(115200); delay(50);
+  Serial.println("\n[dataflash] boot");
+  g_cfg.load();
+  // Role: persisted g_cfg.role, OR hold BOOT (GPIO0 low) at power-on to force sniffer.
+  pinMode(0, INPUT_PULLUP); delay(5);
+  bool bootHeld = (digitalRead(0) == LOW);
+  s_sniffer = (g_cfg.role != 0) || bootHeld;
+  if (bootHeld) Serial.println("[dataflash] BOOT held -> SNIFFER for this boot");
+  if (s_sniffer) snifferSetup(); else bridgeSetup();
+}
+
+void loop() {
+  if (s_sniffer) snifferLoop(); else bridgeLoop();
+}

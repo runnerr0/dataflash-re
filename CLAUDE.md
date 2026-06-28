@@ -28,6 +28,7 @@ Reverse-engineering the **original Lightwave Research / High End Systems "Datafl
 - ✅ **Program catalog + web visualizer** (`tools/pattern_catalog.py` → `captures/sniff/preview.html`): auto-classifies motion, collapses heartbeat re-sends to true states, legend + per-fixture readout + rename/export. Per-fixture byte is a single ~8-bit intensity (`00`=off); see master-sweep finding below.
 - ✅ **Control plane finished** (2026-06-26): the operating control plane is the `0x00` heartbeat (master timebase) **alone**. `0xC0`/`0x80` were proven to be **sniffer decode artifacts** — misread heartbeats from a late start-edge `t0` (98.4% embedded in heartbeat runs, uniform position, exact bit mechanism); no ARM/START/FIRE/CLEAR/SPECIAL ever on the wire. Sniffer sampling phase fixed in `bridge/src/dataflash_rx.cpp` (data bits at 0.30/window). See `firmware-analysis/04`.
 - ✅ **Per-fixture byte = single ~8-bit intensity** (2026-06-27, master-knob sweep on a sparse program: head byte drops monotonically `0x80`→`0x55`→`0x17`→`0x0F`). NOT a `[mode|intensity]` nibble split — the 8-head product affords full 8-bit/fixture vs the 256-head's 2×4-bit. **Flash/Fire button = all heads full (`80×8`) via the ordinary `55 40` broadcast**, no markers. See `firmware-analysis/04` + protocol spec.
+- ✅ **Unified bridge+sniffer firmware + permanent harness** (2026-06-27): one build does both roles (boot-selected via `g_cfg.role` or holding BOOT/GPIO0). One MAX485 wiring serves both — **GPIO17 = DI + RO-via-divider** (shared; RX receiver tri-stated during TX), **GPIO16 = DE+RE = DIR**. No more rewiring/reflashing to switch modes. `tools/dataflash_frame.py` updated to the broadcast; **bridge output not yet hardware re-verified on the new framing** (loopback paused mid-rewire).
 - ⬜ Whether strobe-*effect* programs encode any flash-rate/mode in the byte (steady programs are pure intensity)
 - ⬜ Hardware-verified end to end on a real fixture
 
@@ -51,7 +52,7 @@ osc.*         TouchOSC OSC in (8000) / feedback out (9000)          [controller 
 patterns.*    stage-sequencer strobe engine (free-runs); modifiers: factor/random/advance/modulate
 main.cpp      scheduler: PAT_LIVE=network passthrough; else patterns_render; refresh + heartbeats
 dataflash_tx.* RMT 9-bit/375k framing: REAL 8-head broadcast `55 40 + <1 byte/fixture, 8-bit> + 00`, no markers; `0x00` heartbeats (9th=1) between refreshes
-dataflash_rx.* 9-bit RX SNIFFER (bit-bang on core 1): recovers value + 9th bit [DF_SNIFF_MODE build only]
+dataflash_rx.* 9-bit RX SNIFFER (bit-bang on core 0): recovers value + 9th bit [SNIFFER role of the unified firmware]
 audio.*       I2S audio in (mic=I2S1 INMP441 / line-in=I2S0, SW-select); DSP task -> envelope=g_pat.audioLevel (Modulate) + onset->g_pat.beatTicks (Audio1) [DF_AUDIO build only, env esp32-s3-audio]
 net.*  ETH+WiFi-AP fallback   webui.*  async status/config/test   config.h  NVS+pins   ui.h  OLED+encoder stub
 ```
@@ -65,11 +66,16 @@ python3 dis51.py "[('region', 0x0C06, 0x0CB0)]"
 ```
 
 ## Building the bridge
-Three PlatformIO envs (pick one with `-e`, else `pio run` builds all):
+**UNIFIED firmware** — one build is both bridge AND sniffer; role chosen at boot
+(`g_cfg.role`, or **hold BOOT/GPIO0 at power-on to force sniffer**). One permanent
+MAX485 harness does both (half-duplex): **GPIO17 = DI + RO-via-1k/2k-divider** (shared;
+receiver tri-stated during TX), **GPIO16 = DE+RE tied = DIR** (HIGH=TX, LOW=RX), A/B → gear.
+PlatformIO envs (pick with `-e`, else `pio run` builds all):
 - `esp32-poe-iso` — Olimex ESP32-PoE-ISO (LAN8720 RMII, PoE) — production target role.
-- `esp32-s3-eth` — WaveShare ESP32-S3-ETH (W5500 SPI ETH, native USB-C) — bench/TX board. Wired ETH needs W5500 SPI init (not yet in net.cpp); WiFi-AP only for now.
+- `esp32-s3-eth` — WaveShare ESP32-S3-ETH (W5500 SPI ETH, native USB-C) — unified, default **bridge**. Wired ETH needs W5500 SPI init (not yet in net.cpp); WiFi-AP only for now.
+- `esp32-s3-audio` — unified + `-DDF_AUDIO` (I2S audio in). Same wiring + audio I2S pins.
+- `esp32-s3-sniff` — same unified firmware, default **sniffer** (`-DDF_ROLE_DEFAULT=1`). Listen-only; prints `<hex>C` (control 9th=1) / `<hex>d` (data 9th=0).
 - `esp32-c3` — generic C3 devkit (WiFi only) — alt bench board.
-- `esp32-s3-sniff` — S3 **9-bit RX sniffer** (listen-only analyzer; `-DDF_SNIFF_MODE`). Wire MAX485 to receive: RE=DE=GND, RO→GPIO16, A/B on the link. Prints `<hex>C` (control 9th=1) / `<hex>d` (data 9th=0).
 ```bash
 cd bridge && pio run -e esp32-s3-eth -t upload && pio device monitor -e esp32-s3-eth
 ```

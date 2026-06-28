@@ -30,6 +30,9 @@
 #ifndef ENC_SW_PIN
 #define ENC_SW_PIN  34   // input-only OK for a button
 #endif
+#ifndef DF_ROLE_DEFAULT
+#define DF_ROLE_DEFAULT 0   // boot role: 0=bridge, 1=sniffer (env can override)
+#endif
 
 struct Config {
   // network
@@ -50,6 +53,8 @@ struct Config {
   uint16_t fixtureCount = 8;        // 8-head controller = 8 fixtures (1 byte each)
   bool     nibbleSwap   = false;    // legacy (256-head 2-per-byte model); unused by the 8-head broadcast
   bool     htpMerge     = true;     // HTP-merge Art-Net + sACN; else last-arrived wins
+  // role (unified firmware): 0=bridge, 1=sniffer. BOOT-held at power-on also forces sniffer.
+  uint8_t  role         = DF_ROLE_DEFAULT;
   // output
   uint8_t  refreshHz    = 44;       // full-packet refresh rate
   uint8_t  heartbeatHz  = 120;      // heartbeat (0x00) cadence between refreshes
@@ -76,6 +81,7 @@ struct Config {
     refreshHz    = p.getUChar("rhz",   refreshHz);
     heartbeatHz  = p.getUChar("hhz",   heartbeatHz);
     outputEnable = p.getBool ("oen",   outputEnable);
+    role         = p.getUChar("role",  role);
     audioEnable  = p.getBool ("aen",   audioEnable);
     audioSource  = p.getUChar("asrc",  audioSource);
     audioMode    = p.getUChar("amode", audioMode);
@@ -97,6 +103,7 @@ struct Config {
     p.putUChar("rhz",   refreshHz);
     p.putUChar("hhz",   heartbeatHz);
     p.putBool ("oen",   outputEnable);
+    p.putUChar("role",  role);
     p.putBool ("aen",   audioEnable);
     p.putUChar("asrc",  audioSource);
     p.putUChar("amode", audioMode);
